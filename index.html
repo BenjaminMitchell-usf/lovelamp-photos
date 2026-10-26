@@ -399,6 +399,7 @@ $("go").addEventListener("click", () => {
   const client = mqtt.connect(BROKER, {
     username: USER, password: pass, clientId: "lamp-photos-" + hexId(),
     clean: true, connectTimeout: 15000, reconnectPeriod: 0,
+    protocolVersion: 5,   // (so a send the broker refuses comes back as an error, not silence)
   });
   let done = false;
   const finish = (text, kind) => {
@@ -409,8 +410,14 @@ $("go").addEventListener("click", () => {
     client.end(true);
   };
   client.on("connect", () => {
-    client.publish(`ll/${PAIR}/${other()}/photo`, msg, { qos: 1 }, (err) => {
-      if (err) { finish("It didn't go through. Try again?", "err"); return; }
+    client.publish(`ll/${PAIR}/${other()}/photo`, msg, { qos: 1 }, (err, packet) => {
+      const refused = packet && packet.reasonCode >= 0x80;
+      if (err || refused) {
+        finish(refused && packet.reasonCode === 0x87
+          ? "The lamps' broker isn't letting this login send photos yet (check its rules)."
+          : "It didn't go through. Try again?", "err");
+        return;
+      }
       // and a quiet copy for my own lamp, so both lamps keep the whole album
       client.publish(`ll/${PAIR}/${me}/photo`, msg, { qos: 1 }, () => {
         finish(`On ${NAMES[other()]}'s lamp now.`, "ok");
