@@ -286,12 +286,13 @@ $("go").addEventListener("click", () => {
   };
   client.on("connect", () => {
     client.publish(`ll/${PAIR}/${other()}/photo`, msg, { qos: 1 }, (err) => {
-      if (err) finish("It didn't go through. Try again?", "err");
-      else {
+      if (err) { finish("It didn't go through. Try again?", "err"); return; }
+      // and a quiet copy for my own lamp, so both lamps keep the whole album
+      client.publish(`ll/${PAIR}/${me}/photo`, msg, { qos: 1 }, () => {
         finish(`Sent! It's on ${NAMES[other()]}'s lamp now.`, "ok");
         hearts(9);
         $("caption").value = "";
-      }
+      });
     });
   });
   client.on("error", (e) => {
