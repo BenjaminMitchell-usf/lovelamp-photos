@@ -3,226 +3,497 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Love Lamp Photos</title>
-<meta name="description" content="Send a photo to the other love lamp.">
-<meta name="theme-color" content="#1b120c">
+<title>Love Lamp</title>
+<meta name="description" content="Your love lamp, from your phone: its light, hearts and photos.">
+<meta name="theme-color" content="#160d12">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Lamp Photos">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Love Lamp">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-180.png">
+<link rel="preload" as="image" href="dusk-A.jpg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Lora:ital,wght@0,500;0,600;1,500&display=swap" rel="stylesheet">
 <script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
 <style>
-  /* Lamp parchment and walnut; the system font for everything you read or tap,
-     Lora (the lamp's own serif) for the one big title. */
+  /* The lakeside at dusk, and your lamp's globe lighting it.  Controls are the
+     lamp's own lantern glass (smoky, a fine gold rim); words are cream; Lora is
+     the lamp's serif, Great Vibes its handwriting (once per screen). */
   :root {
-    --ink: #2b1d13; --ink-2: #6f5948; --ink-3: #9a8574;
-    --sheet: rgba(255, 249, 240, .78); --sheet-solid: #fbf3e6;
-    --field: #fffdf9; --hairline: rgba(120, 84, 48, .18);
-    --accent: #c2185b; --go: #2f6f51; --go-deep: #1f4e39; --gold: #c9a464;
-    --radius-sheet: 26px; --radius-ctl: 14px;
-    --spring: cubic-bezier(.2, .9, .25, 1);       /* fast out, soft settle: no overshoot */
+    --night: #160d12;                       /* dusk, deep plum-brown */
+    --glass: rgba(34, 21, 25, .5);          /* lantern glass */
+    --glass-hi: rgba(255, 240, 225, .09);   /* a control on the glass */
+    --rim: rgba(255, 208, 138, .3);         /* its fine gold edge */
+    --cream: #fff1df; --cream-2: rgba(255, 241, 223, .7); --cream-3: rgba(255, 241, 223, .46);
+    --ink: #2a1a14;                          /* text on cream */
+    --rose: #ff7fa6; --rose-deep: #d23c72; --gold: #f4cd78;
+    --glow: #ffb070; --level: .5; --lit: 1;  /* the globe: colour, brightness, on */
+    --gy: 30vh;                               /* where the globe is on screen (its light spills from there) */
+    --spring: cubic-bezier(.2, .9, .25, 1);
+    --tabbar: calc(4rem + env(safe-area-inset-bottom));
+    --serif: Lora, "Iowan Old Style", Georgia, serif;
+    --hand: "Great Vibes", "Snell Roundhand", cursive;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin: 0; height: 100%; }
+  html, body { margin: 0; min-height: 100%; }
   body {
-    background: #1b120c; color: var(--ink);
-    font: 500 1.0625rem/1.45 -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
+    background: var(--night); color: var(--cream);
+    font: 500 1rem/1.45 -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased; overflow-x: hidden;
   }
+  :focus-visible { outline: 2px solid var(--cream); outline-offset: 3px; border-radius: 12px; }
 
-  /* the world: the other lamp's lakeside and its pet, where the photo will go */
-  .world { position: fixed; inset: 0; background-size: cover; opacity: 0; z-index: 0;
-           transition: opacity 1.2s ease; }
-  .world.on { opacity: 1; }
-  #worldA { background-image: url(world-A.jpg); background-position: 46% 85%; }
-  #worldB { background-image: url(world-B.jpg); background-position: 61% 85%; }
-  .scrim { position: fixed; inset: 0; z-index: 1; pointer-events: none;
-           background: linear-gradient(180deg, rgba(18, 10, 4, .62) 0%, rgba(18, 10, 4, .18) 30%, rgba(18, 10, 4, 0) 52%); }
+  /* ---- the scene: the world behind everything (fixed; the page scrolls over it) */
+  .scene { position: fixed; inset: 0; z-index: 0; background-size: cover; background-repeat: no-repeat;
+           opacity: 0; transition: opacity 1.1s ease;
+           -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 18%, #000 72%, transparent 100%);
+           mask-image: linear-gradient(180deg, transparent 0, #000 18%, #000 72%, transparent 100%); }
+  .scene.on { opacity: 1; }
+  /* on the Lamp tab the room is lit by the lamp: dim when it's off, brighter as it brightens */
+  .scene { transition: opacity 1.1s ease, filter .6s ease; }
+  body[data-tab="lamp"] .scene { filter: brightness(calc(.4 + .45 * var(--lit) * var(--level))) saturate(calc(.75 + .2 * var(--lit))); }
+  #s-dusk-A { background-image: url(dusk-A.jpg); }
+  #s-dusk-B { background-image: url(dusk-B.jpg); }
+  #s-together-A { background-image: url(together-A.jpg); }
+  #s-together-B { background-image: url(together-B.jpg); }
+  /* the open space where the pets show through, under the lamp or the heart */
+  .stage { height: clamp(7rem, 19vh, 11rem); pointer-events: none; }
+  /* the globe's light, spilling over the world from where the globe is */
+  .wash { position: fixed; inset: 0; z-index: 1; pointer-events: none; mix-blend-mode: screen;
+          background: radial-gradient(circle at 50% var(--gy), color-mix(in srgb, var(--glow) 70%, transparent) 0,
+                      color-mix(in srgb, var(--glow) 22%, transparent) 34%, transparent 66%);
+          opacity: calc(var(--lit) * (.3 + .6 * var(--level))); transition: opacity .6s ease; }
+  body:not([data-tab="lamp"]) .wash { opacity: 0; }
+  .shade { position: fixed; inset: 0; z-index: 1; pointer-events: none;
+           background: linear-gradient(180deg, rgba(14, 7, 11, .62) 0%, rgba(14, 7, 11, .1) 20%, rgba(14, 7, 11, 0) 38%,
+                                       rgba(22, 13, 18, .55) 58%, rgba(22, 13, 18, .9) 78%, var(--night) 100%); }
 
   main {
-    position: relative; z-index: 2; max-width: 30rem; margin: 0 auto;
-    min-height: 100dvh; display: flex; flex-direction: column;
-    padding: max(1.1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
+    position: relative; z-index: 2; max-width: 27rem; margin: 0 auto; min-height: 100dvh;
+    display: flex; flex-direction: column; gap: 1rem;
+    padding: max(1rem, env(safe-area-inset-top)) max(1.1rem, env(safe-area-inset-right))
+             calc(var(--tabbar) + 1.4rem) max(1.1rem, env(safe-area-inset-left));
   }
-  header { display: flex; align-items: flex-start; gap: .75rem; padding: .25rem .25rem .9rem; }
-  header .text { flex: 1; min-width: 0; }
-  h1 { margin: 0; color: #fff9f0; font: 700 2.05rem/1.05 Lora, Georgia, serif; letter-spacing: -.02em;
-       text-wrap: balance; text-shadow: 0 1px 18px rgba(0, 0, 0, .5); }
-  .lede { margin: .35rem 0 0; color: rgba(255, 244, 228, .86); font-size: .95rem; letter-spacing: .005em;
-          text-shadow: 0 1px 10px rgba(0, 0, 0, .55); }
 
-  /* a small material pill: who you are, tap to change */
-  .who-pill { flex: none; margin-top: .3rem; border: 0; font: 600 .82rem/1 inherit; color: #fff6ea;
-              padding: .5rem .8rem; border-radius: 999px; letter-spacing: .01em;
-              background: rgba(30, 18, 10, .38); -webkit-backdrop-filter: blur(14px) saturate(160%);
-              backdrop-filter: blur(14px) saturate(160%); box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .25); }
+  /* ---- the top: a handwritten title, and who you are */
+  header { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+  h1 { margin: .1rem 0 0; font: 400 2.9rem/1 var(--hand); letter-spacing: 0; color: var(--cream);
+       text-shadow: 0 2px 22px rgba(0, 0, 0, .55), 0 0 30px color-mix(in srgb, var(--glow) 35%, transparent); }
+  .sub { margin: .35rem 0 0 .15rem; display: flex; align-items: center; gap: .45rem; min-height: 1.2rem;
+         font-size: .88rem; color: var(--cream-2); text-shadow: 0 1px 10px rgba(0, 0, 0, .6); }
+  .dot { width: .45rem; height: .45rem; border-radius: 50%; background: #8a7f78; flex: none; transition: background .3s, box-shadow .3s; }
+  .dot.up { background: #7fd394; box-shadow: 0 0 8px rgba(127, 211, 148, .9); }
+  .dot.trying { background: var(--gold); animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .who { flex: none; margin-top: .55rem; min-height: 2.2rem; padding: 0 .85rem; border-radius: 999px;
+         font: 600 .82rem/1 inherit; color: var(--cream); letter-spacing: .01em;
+         background: rgba(30, 18, 22, .42); -webkit-backdrop-filter: blur(16px) saturate(150%); backdrop-filter: blur(16px) saturate(150%);
+         box-shadow: inset 0 0 0 .5px var(--rim); display: inline-flex; align-items: center; gap: .4rem; }
+  .who svg { width: .8rem; height: .8rem; opacity: .7; }
 
-  /* the sheet: one light material over the world, its top edge catching light */
-  .sheet {
-    background: var(--sheet); border-radius: var(--radius-sheet); padding: 1.1rem;
-    -webkit-backdrop-filter: blur(24px) saturate(170%); backdrop-filter: blur(24px) saturate(170%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .7), 0 1px 1px rgba(40, 20, 5, .08), 0 18px 44px rgba(20, 10, 2, .38);
-    display: flex; flex-direction: column; gap: .9rem;
-    animation: materialize .5s var(--spring) both;
-  }
-  @keyframes materialize { from { opacity: 0; transform: translateY(10px) scale(.985); filter: blur(4px); }
-                           to { opacity: 1; transform: none; filter: none; } }
-  .eyebrow { margin: 0; font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  /* ---- lantern glass: one material for every group of controls */
+  .glass { position: relative; border-radius: 24px; padding: 1.05rem;
+           background: var(--glass); -webkit-backdrop-filter: blur(26px) saturate(150%); backdrop-filter: blur(26px) saturate(150%);
+           box-shadow: inset 0 0 0 .5px var(--rim), inset 0 1px 0 rgba(255, 236, 210, .14), 0 20px 50px rgba(8, 3, 6, .45);
+           display: flex; flex-direction: column; gap: .85rem; }
+  .label { margin: 0; font-size: .9rem; font-weight: 600; color: var(--cream-2); }
+  .row { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
+  .num { font: 500 .95rem var(--serif); color: var(--cream); font-variant-numeric: tabular-nums lining-nums; }
+  .note { margin: -.35rem 0 0; font-size: .8rem; line-height: 1.4; color: var(--cream-3); }
 
-  /* controls: feedback on the press, instantly */
-  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
-  .press { transition: transform .1s ease-out, filter .1s ease-out; }
-  .press:active { transform: scale(.97); filter: brightness(.96); }
-  .primary { width: 100%; min-height: 3.25rem; border-radius: var(--radius-ctl); color: #fffaf2;
-             font-weight: 700; font-size: 1.05rem; letter-spacing: .005em;
-             background: linear-gradient(180deg, #37805e, var(--go-deep)); box-shadow: 0 6px 16px rgba(31, 78, 57, .32); }
-  .primary:disabled { opacity: .45; box-shadow: none; cursor: default; }
-  .primary .spin { display: none; width: 1.05rem; height: 1.05rem; margin-right: .5rem; vertical-align: -.17rem;
-                   border: 2px solid rgba(255, 255, 255, .45); border-top-color: #fff; border-radius: 50%;
-                   animation: spin .8s linear infinite; }
-  .primary.busy .spin { display: inline-block; }
+  .panel { display: flex; flex-direction: column; gap: 1rem; animation: arrive .5s var(--spring) both; }
+  @keyframes arrive { from { opacity: 0; transform: translateY(10px); filter: blur(4px); } to { opacity: 1; transform: none; filter: none; } }
+
+  button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; }
+  .press { transition: transform .12s ease-out, filter .12s ease-out; }
+  .press:active { transform: scale(.96); filter: brightness(1.12); }
+
+  /* buttons */
+  .primary { width: 100%; min-height: 3.3rem; border-radius: 16px; font-weight: 700; font-size: 1.05rem; color: #fff8f0;
+             background: linear-gradient(180deg, #ff8fb2, var(--rose-deep));
+             box-shadow: 0 10px 26px rgba(210, 60, 114, .38), inset 0 1px 0 rgba(255, 255, 255, .35);
+             display: inline-flex; align-items: center; justify-content: center; gap: .55rem; }
+  .primary:disabled { filter: grayscale(.6) brightness(.75); box-shadow: none; cursor: default; }
+  .quiet { width: 100%; min-height: 3.1rem; border-radius: 16px; font-weight: 650; color: var(--cream);
+           background: var(--glass-hi); box-shadow: inset 0 0 0 .5px var(--rim);
+           display: inline-flex; align-items: center; justify-content: center; gap: .55rem; }
+  .quiet svg { width: 1.1rem; height: 1.1rem; color: var(--rose); }
+  .spin { display: none; width: 1.05rem; height: 1.05rem; border: 2px solid rgba(255, 255, 255, .4);
+          border-top-color: #fff; border-radius: 50%; animation: spin .8s linear infinite; }
+  .busy .spin { display: inline-block; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* who's sending: a segmented control, its thumb sliding to the choice */
-  .segmented { position: relative; display: grid; grid-template-columns: 1fr 1fr; padding: 3px;
-               border-radius: 12px; background: rgba(120, 84, 48, .12); }
-  .segmented .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; width: calc(50% - 3px); border-radius: 9px;
-                      background: var(--field); box-shadow: 0 1px 2px rgba(40, 20, 5, .14), 0 3px 8px rgba(40, 20, 5, .08);
-                      transition: transform .32s var(--spring), opacity .2s; opacity: 0; }
-  .segmented[data-on="A"] .thumb, .segmented[data-on="B"] .thumb { opacity: 1; }
-  .segmented[data-on="B"] .thumb { transform: translateX(100%); }
-  .segmented button { position: relative; z-index: 1; min-height: 2.6rem; font-weight: 600; color: var(--ink-2); }
-  .segmented button[aria-pressed="true"] { color: var(--ink); }
+  /* a segmented control; the cream thumb slides to the choice */
+  .seg { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; padding: 3px;
+         border-radius: 14px; background: rgba(255, 240, 225, .07); box-shadow: inset 0 0 0 .5px rgba(255, 220, 180, .14); }
+  .seg .thumb { position: absolute; top: 3px; bottom: 3px; left: 3px; border-radius: 11px; opacity: 0;
+                background: linear-gradient(180deg, #fff8ee, #f5e4cd); box-shadow: 0 2px 8px rgba(0, 0, 0, .3);
+                transition: transform .38s var(--spring), opacity .2s; }
+  .seg button { position: relative; z-index: 1; min-height: 2.65rem; padding: 0 .25rem; font-size: .9rem; font-weight: 600;
+                color: var(--cream-2); line-height: 1.15; transition: color .25s; }
+  .seg button[aria-pressed="true"] { color: var(--ink); }
 
   input[type=password], input[type=text] {
-    width: 100%; min-height: 3rem; padding: .75rem .9rem; border-radius: var(--radius-ctl);
-    border: 1px solid var(--hairline); background: var(--field); color: var(--ink);
-    font: 500 1.0625rem/1.2 inherit; outline: none; transition: border-color .15s, box-shadow .15s;
+    width: 100%; min-height: 3.1rem; padding: .8rem 1rem; border-radius: 14px; border: 0; outline: none;
+    background: rgba(255, 240, 225, .08); box-shadow: inset 0 0 0 .5px var(--rim); color: var(--cream);
+    font: 500 1.0625rem/1.2 inherit; transition: box-shadow .15s, background .15s;
   }
-  input:focus { border-color: rgba(194, 24, 91, .55); box-shadow: 0 0 0 4px rgba(194, 24, 91, .12); }
-  .hint { margin: -.35rem 0 0; font-size: .82rem; color: var(--ink-3); }
+  input::placeholder { color: var(--cream-3); }
+  input:focus { background: rgba(255, 240, 225, .12); box-shadow: inset 0 0 0 1px rgba(255, 208, 138, .7), 0 0 0 4px rgba(255, 208, 138, .12); }
+  .status { min-height: 1.3rem; margin: -.3rem 0 0; text-align: center; font-size: .9rem; font-weight: 600; color: var(--cream-2); }
+  .status.ok { color: #9fe0b0; }
+  .status.err { color: #ff9dbb; }
 
-  /* the photo well: the one big thing on the page; a tap opens the photos */
-  .well { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 3 / 2;
-          border-radius: 18px; overflow: hidden; cursor: pointer;
-          background: rgba(120, 84, 48, .08); border: 1.5px dashed rgba(120, 84, 48, .35); }
-  .well input { display: none; }
-  .well .empty { display: grid; justify-items: center; gap: .45rem; color: var(--ink-2); font-weight: 600; text-align: center; }
-  .well .empty svg { width: 2.3rem; height: 2.3rem; color: var(--accent); }
-  .well .empty small { font-weight: 500; color: var(--ink-3); font-size: .82rem; }
-  .well.has { border: 0; background: #1a120c; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08); }
-  .well canvas { display: none; max-width: 100%; max-height: 100%; }
-  .well.has canvas { display: block; }
-  .well.has .empty { display: none; }
-  .well .change { position: absolute; right: .6rem; bottom: .6rem; display: none; padding: .38rem .7rem; border-radius: 999px;
-                  font-size: .8rem; font-weight: 600; color: #fff; background: rgba(20, 12, 6, .5);
-                  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-  .well.has .change { display: block; }
+  /* ---- the Lamp: its globe, on a little walnut base; the hero of the page */
+  .hero { display: grid; justify-items: center; padding: 1.2rem 0 .3rem; }
+  .lamp { position: relative; display: grid; justify-items: center; border-radius: 50%; }
+  .halo { position: absolute; left: 50%; top: 42%; width: 21rem; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%;
+          pointer-events: none; background: radial-gradient(closest-side, color-mix(in srgb, var(--glow) 75%, transparent),
+                                                            color-mix(in srgb, var(--glow) 18%, transparent) 55%, transparent);
+          opacity: calc(var(--lit) * (.25 + .75 * var(--level))); scale: calc(.75 + .3 * var(--level));
+          transition: opacity .6s ease, scale .6s var(--spring); filter: blur(6px); }
+  .globe { position: relative; width: min(11.5rem, 52vw); aspect-ratio: 1; border-radius: 50%; overflow: hidden;
+           transition: box-shadow .6s ease, filter .6s ease; }
+  .globe::before, .globe::after { content: ""; position: absolute; border-radius: 50%; pointer-events: none; }
+  .globe::before { inset: 0; transition: opacity .6s ease;    /* the light inside: a hot core, the colour, a deeper edge */
+                   background: radial-gradient(circle at 50% 52%, #fff 0%, color-mix(in srgb, var(--glow) 30%, #fff) 18%,
+                               color-mix(in srgb, var(--glow) 75%, #fff) 34%, var(--glow) 56%,
+                               color-mix(in srgb, var(--glow) 70%, #4a1408) 86%, color-mix(in srgb, var(--glow) 45%, #1a0408) 100%);
+                   opacity: var(--lit); filter: brightness(calc(.85 + .35 * var(--level))) saturate(1.1); }
+  .globe::after { inset: 5% 27% 63% 13%;                       /* the room's window, caught on the glass */
+                  background: radial-gradient(ellipse at 50% 55%, rgba(255, 255, 255, .9), rgba(255, 255, 255, .25) 45%, rgba(255, 255, 255, 0) 72%);
+                  rotate: -24deg; opacity: .75; }
+  .globe { background: radial-gradient(circle at 46% 34%, rgba(255, 255, 255, .34), rgba(190, 176, 170, .2) 48%, rgba(46, 30, 34, .62) 100%);
+           box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, .3), inset 0 -20px 36px rgba(24, 6, 4, .5), inset 0 12px 26px rgba(255, 255, 255, .16),
+                       0 0 calc(var(--lit) * (20px + 40px * var(--level))) calc(var(--lit) * (4px + 10px * var(--level))) color-mix(in srgb, var(--glow) 85%, transparent),
+                       0 0 calc(var(--lit) * (60px + 110px * var(--level))) calc(var(--lit) * (10px + 30px * var(--level))) color-mix(in srgb, var(--glow) 45%, transparent); }
+  .base { width: min(6.6rem, 30vw); height: 1.15rem; margin-top: -.35rem; border-radius: 8px 8px 12px 12px;
+          background: linear-gradient(180deg, #a8714a, #6b4329 60%, #4e301d);
+          box-shadow: inset 0 1px 0 rgba(255, 220, 180, .35), 0 8px 18px rgba(0, 0, 0, .45),
+                      0 -4px 14px calc(var(--lit) * 2px) color-mix(in srgb, var(--glow) calc(var(--lit) * 45%), transparent); }
+  .lamp:active .globe { transform: scale(.975); transition: transform .1s ease-out; }
+  .caption { margin-top: 1rem; text-align: center; }
+  .caption b { display: block; font: 500 1.35rem/1.2 var(--serif); color: var(--cream); text-shadow: 0 1px 12px rgba(0, 0, 0, .5); }
+  .caption span { font-size: .85rem; color: var(--cream-3); }
+  /* the effects, gently, on the picture of the globe (nothing at all with reduced motion) */
+  .lamp[data-fx="pulse"] .globe::before { animation: breathe 2.5s ease-in-out infinite; }
+  .lamp[data-fx="warm"] .globe::before { animation: breathe 8s ease-in-out infinite; }
+  .lamp[data-fx="heartbeat"] .globe { animation: beat 1.1s ease-in-out infinite; }
+  .lamp[data-fx="candle"] .globe::before { animation: flicker 1.9s steps(7) infinite; }
+  .lamp[data-fx="aurora"] .globe::before { animation: aurora 12s linear infinite; }
+  @keyframes breathe { 50% { filter: brightness(calc(.5 + .3 * var(--level))); } }
+  @keyframes beat { 0%, 45%, 100% { transform: scale(1); } 10% { transform: scale(1.035); } 26% { transform: scale(1.02); } }
+  @keyframes flicker { 0% { opacity: 1; } 25% { opacity: .86; } 50% { opacity: .97; } 75% { opacity: .9; } }
+  @keyframes aurora { to { filter: hue-rotate(360deg) brightness(calc(.85 + .35 * var(--level))); } }
 
+  /* brightness: a track that fills with the light, a pearl to drag */
+  input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 2.6rem; margin: -.45rem 0; background: none; touch-action: pan-y; }
+  input[type=range]::-webkit-slider-runnable-track { height: .7rem; border-radius: 999px;
+    background: linear-gradient(90deg, color-mix(in srgb, var(--glow) 25%, #3a2a2a) 0%, var(--glow) calc(var(--fill) * 100%),
+                                rgba(255, 240, 225, .1) calc(var(--fill) * 100%)); }
+  input[type=range]::-moz-range-track { height: .7rem; border-radius: 999px; background: rgba(255, 240, 225, .1); }
+  input[type=range]::-moz-range-progress { height: .7rem; border-radius: 999px; background: var(--glow); }
+  input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 1.7rem; height: 1.7rem; margin-top: -.5rem; border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #fff, #f2e3cf); box-shadow: 0 2px 8px rgba(0, 0, 0, .45), 0 0 0 .5px rgba(0, 0, 0, .2); }
+  input[type=range]::-moz-range-thumb { width: 1.7rem; height: 1.7rem; border: 0; border-radius: 50%;
+    background: radial-gradient(circle at 40% 35%, #fff, #f2e3cf); box-shadow: 0 2px 8px rgba(0, 0, 0, .45); }
+
+  /* colours: glass beads; the last opens any colour at all */
+  .beads { display: grid; grid-template-columns: repeat(4, 1fr); gap: .8rem .5rem; padding: .15rem 0; }
+  .bead { position: relative; justify-self: center; width: min(3rem, 100%); aspect-ratio: 1; border-radius: 50%;
+          background: radial-gradient(circle at 36% 30%, color-mix(in srgb, var(--c) 30%, #fff) 0%, var(--c) 45%, color-mix(in srgb, var(--c) 70%, #000) 100%);
+          box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .3), 0 3px 8px rgba(0, 0, 0, .35); transition: box-shadow .25s; }
+  .bead[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--night), 0 0 0 4px var(--cream), 0 0 18px 2px color-mix(in srgb, var(--c) 80%, transparent); }
+  .bead.any { --c: #ff9fbf; background: conic-gradient(from 20deg, #ff6f6f, #ffc371, #f9f871, #7ee8a2, #6fb7ff, #b79cff, #ff6fa5, #ff6f6f); overflow: hidden; }
+  .bead.any input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; padding: 0; cursor: pointer; }
+
+  .chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+  .chip { min-height: 2.6rem; border-radius: 12px; font-size: .88rem; font-weight: 600; color: var(--cream-2);
+          background: var(--glass-hi); box-shadow: inset 0 0 0 .5px rgba(255, 220, 180, .16); transition: color .2s, background .2s; }
+  .chip[aria-pressed="true"] { color: var(--ink); background: linear-gradient(180deg, #fff8ee, #f5e4cd); box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
+  .dim { opacity: .45; }
+
+  /* ---- Love: a big rose heart, glowing; tap codes; my mood */
+  .love-hero { display: grid; justify-items: center; gap: .9rem; padding: 1.4rem 0 .4rem; }
+  .heart-orb { position: relative; display: grid; place-items: center; width: min(10rem, 46vw); aspect-ratio: 1; border-radius: 50%;
+               background: radial-gradient(circle at 40% 32%, #ffc2d4 0%, #ff7fa6 38%, #c8215d 100%);
+               box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35), inset 0 -12px 26px rgba(90, 0, 30, .35),
+                           0 0 46px 6px rgba(255, 111, 154, .45), 0 18px 40px rgba(0, 0, 0, .4);
+               animation: idle-glow 5s ease-in-out infinite; }
+  .heart-orb::after { content: ""; position: absolute; inset: 9% 26% 58% 20%; border-radius: 50%; rotate: -18deg;
+                      background: radial-gradient(closest-side, rgba(255, 255, 255, .7), rgba(255, 255, 255, 0)); }
+  .heart-orb svg { width: 42%; height: 42%; color: #fff6f8; filter: drop-shadow(0 3px 8px rgba(110, 0, 40, .45)); }
+  .heart-orb.sent svg { animation: thump .55s var(--spring); }
+  @keyframes thump { 30% { transform: scale(1.22); } }
+  @keyframes idle-glow { 50% { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35), inset 0 -12px 26px rgba(90, 0, 30, .35),
+                                           0 0 64px 12px rgba(255, 111, 154, .55), 0 18px 40px rgba(0, 0, 0, .4); } }
+  .love-hero .caption { margin-top: 0; }
+
+  .codes { display: grid; gap: .5rem; }
+  .code { display: flex; align-items: center; justify-content: space-between; min-height: 3.1rem; padding: 0 1rem; border-radius: 14px;
+          background: var(--glass-hi); box-shadow: inset 0 0 0 .5px rgba(255, 220, 180, .16); font: 500 1.05rem var(--serif); color: var(--cream); }
+  .code .taps { display: flex; gap: .32rem; }
+  .code .taps i { width: .5rem; height: .5rem; border-radius: 50%; background: var(--rose); box-shadow: 0 0 8px rgba(255, 127, 166, .8); }
+  .code.playing .taps i { animation: tap .65s ease-out both; animation-delay: calc(var(--i) * .65s); }
+  @keyframes tap { 0% { transform: scale(1); } 25% { transform: scale(1.8); background: #fff; } 100% { transform: scale(1); } }
+
+  .moods { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem .5rem; }
+  .mood { display: grid; justify-items: center; gap: .4rem; padding: .2rem 0; font-size: .8rem; font-weight: 600; color: var(--cream-2); }
+  .mood i { width: 2.4rem; aspect-ratio: 1; border-radius: 50%; transition: box-shadow .25s;
+            background: radial-gradient(circle at 36% 30%, color-mix(in srgb, var(--c) 30%, #fff), var(--c) 45%, color-mix(in srgb, var(--c) 65%, #000));
+            box-shadow: inset 0 0 0 .5px rgba(255, 255, 255, .3), 0 0 14px color-mix(in srgb, var(--c) 55%, transparent); }
+  .mood.clear i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--cream-3); }
+  .mood[aria-pressed="true"] { color: var(--cream); }
+  .mood[aria-pressed="true"] i { box-shadow: 0 0 0 2px var(--night), 0 0 0 4px var(--cream), 0 0 22px 4px color-mix(in srgb, var(--c) 70%, transparent); }
+
+  /* ---- Photo: a polaroid, like the one by the pet on the lamp, your note in ink */
+  .polaroid { position: relative; display: block; width: min(100%, 22rem); margin: 1rem auto .2rem; padding: .7rem .7rem 0;
+              background: linear-gradient(180deg, #fffdf8, #f3ede2); border-radius: 4px; rotate: -2.2deg; cursor: pointer;
+              box-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 22px 48px rgba(0, 0, 0, .5); transition: rotate .45s var(--spring), transform .12s ease-out; }
+  .polaroid:active { transform: scale(.98); }
+  .polaroid.has { rotate: -1deg; }
+  .polaroid input[type=file] { display: none; }
+  .print { position: relative; display: grid; place-items: center; aspect-ratio: 3 / 2; overflow: hidden; border-radius: 2px;
+           background: radial-gradient(circle at 50% 40%, #3b2a2c, #1f1416); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .25); }
+  .print .empty { display: grid; justify-items: center; gap: .45rem; text-align: center; color: rgba(255, 241, 223, .8); font-weight: 600; }
+  .print .empty svg { width: 2.2rem; height: 2.2rem; color: var(--rose); }
+  .print .empty small { font-weight: 500; font-size: .8rem; color: rgba(255, 241, 223, .5); }
+  .print canvas { display: none; width: 100%; height: 100%; object-fit: contain; }
+  .polaroid.has canvas { display: block; }
+  .polaroid.has .empty { display: none; }
+  .ink { display: block; min-height: 3.6rem; padding: .55rem .4rem .7rem; text-align: center; overflow-wrap: anywhere;
+         font: 400 1.9rem/1.05 var(--hand); color: #3a2a6a; }
+  .ink.blank { color: rgba(58, 42, 106, .32); }
   .note-row { position: relative; }
-  .note-row .count { position: absolute; right: .8rem; top: 50%; transform: translateY(-50%); font-size: .78rem;
-                     color: var(--ink-3); font-variant-numeric: tabular-nums; pointer-events: none; }
+  .note-row .count { position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); font-size: .78rem;
+                     color: var(--cream-3); font-variant-numeric: tabular-nums; pointer-events: none; }
   .note-row input { padding-right: 3.2rem; }
 
-  .status { min-height: 1.3rem; margin: -.2rem 0 0; text-align: center; font-size: .9rem; font-weight: 600; color: var(--ink-2); }
-  .status.ok { color: var(--go); }
-  .status.err { color: var(--accent); }
+  /* ---- first time: who's this */
+  .welcome { display: grid; gap: .3rem; margin: 7vh 0 0; text-align: center; }
+  .welcome h2 { margin: 0; font: 400 3.6rem/1 var(--hand); text-shadow: 0 2px 24px rgba(0, 0, 0, .6); }
+  .welcome p { margin: 0; color: var(--cream-2); text-shadow: 0 1px 10px rgba(0, 0, 0, .6); }
 
-  .spacer { flex: 1; min-height: 38vh; }   /* the pet, in view below the sheet */
+  /* ---- the tab bar: lantern glass along the bottom */
+  .tabbar { position: fixed; z-index: 6; left: 0; right: 0; bottom: 0; display: flex; justify-content: center;
+            padding: .3rem max(.75rem, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(.75rem, env(safe-area-inset-left));
+            background: rgba(24, 14, 18, .62); -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
+            box-shadow: inset 0 .5px 0 var(--rim); }
+  .tabbar .inner { display: grid; grid-template-columns: repeat(3, 1fr); width: 100%; max-width: 27rem; }
+  .tab { position: relative; display: grid; justify-items: center; align-content: center; gap: .18rem; min-height: 3.55rem;
+         color: var(--cream-3); font-size: .7rem; font-weight: 600; letter-spacing: .01em; transition: color .25s; }
+  .tab svg { width: 1.55rem; height: 1.55rem; transition: transform .3s var(--spring), color .25s; }
+  .tab[aria-selected="true"] { color: var(--cream); }
+  .tab[aria-selected="true"] svg { color: var(--rose); transform: translateY(-1px); filter: drop-shadow(0 0 6px rgba(255, 127, 166, .55)); }
+  .tab:active svg { transform: scale(.88); }
+
+  .toast { position: fixed; z-index: 7; left: 50%; bottom: calc(var(--tabbar) + .8rem); max-width: calc(100% - 2rem); width: max-content;
+           translate: -50% 12px; opacity: 0; pointer-events: none; padding: .65rem 1.05rem; border-radius: 999px; text-align: center;
+           font-size: .9rem; font-weight: 600; color: var(--cream); background: rgba(34, 21, 25, .82);
+           -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); box-shadow: inset 0 0 0 .5px var(--rim), 0 10px 26px rgba(0, 0, 0, .4);
+           transition: opacity .25s, translate .4s var(--spring); }
+  .toast.on { opacity: 1; translate: -50% 0; }
+  .toast.err { background: rgba(130, 18, 56, .9); }
+
+  .flyer { position: fixed; z-index: 8; pointer-events: none; border-radius: 3px; box-shadow: 0 12px 30px rgba(0, 0, 0, .45); }
+  .heart { position: fixed; z-index: 8; pointer-events: none; color: #ff8fb2; font-size: 1.5rem; text-shadow: 0 0 14px rgba(255, 111, 165, .95); }
   .hidden { display: none !important; }
 
-  /* sent: the photo flies down into the world to the pet, and hearts rise there */
-  .flyer { position: fixed; z-index: 5; pointer-events: none; border-radius: 6px; box-shadow: 0 10px 30px rgba(0, 0, 0, .35); }
-  .heart { position: fixed; z-index: 4; pointer-events: none; color: #ff7aa8; font-size: 1.5rem;
-           text-shadow: 0 0 14px rgba(255, 111, 165, .9); }
-
   @media (prefers-reduced-transparency: reduce) {
-    .sheet { background: var(--sheet-solid); -webkit-backdrop-filter: none; backdrop-filter: none; }
-    .who-pill, .well .change { background: rgba(30, 18, 10, .85); -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .glass, .who, .tabbar, .toast { background: #2a1a1f; -webkit-backdrop-filter: none; backdrop-filter: none; }
   }
   @media (prefers-contrast: more) {
-    .sheet { background: var(--sheet-solid); box-shadow: 0 0 0 1.5px var(--ink); }
-    input { border-color: var(--ink-2); }
+    .glass, .chip, .code, .seg, input, .quiet { box-shadow: inset 0 0 0 1.5px var(--cream-2); }
+    .glass { background: #241519; }
   }
   @media (prefers-reduced-motion: reduce) {
-    .world { transition: opacity .3s; }
-    .sheet { animation: fade .25s ease both; }
-    .segmented .thumb { transition: opacity .2s; }
-    .press:active { transform: none; }
+    .scene, .wash, .halo { transition: opacity .3s; }
+    .panel { animation: fade .2s ease both; }
+    .seg .thumb { transition: opacity .2s; }
+    .press:active, .lamp:active .globe, .polaroid:active { transform: none; }
+    .lamp .globe, .lamp .globe::before, .heart-orb, .heart-orb.sent svg, .code.playing .taps i, .dot.trying { animation: none !important; }
+    .polaroid { transition: none; }
+    .toast { transition: opacity .2s; translate: -50% 0; }
   }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
 </style>
 </head>
-<body>
-<div class="world" id="worldA" aria-hidden="true"></div>
-<div class="world" id="worldB" aria-hidden="true"></div>
-<div class="scrim" aria-hidden="true"></div>
+<body data-tab="setup">
+<div class="scene" id="s-dusk-A" aria-hidden="true"></div>
+<div class="scene" id="s-dusk-B" aria-hidden="true"></div>
+<div class="scene" id="s-together-A" aria-hidden="true"></div>
+<div class="scene" id="s-together-B" aria-hidden="true"></div>
+<div class="wash" aria-hidden="true"></div>
+<div class="shade" aria-hidden="true"></div>
+
 <main>
-  <header>
-    <div class="text">
-      <h1 id="title">Send a photo to the lamp</h1>
-      <p class="lede" id="lede">It appears on the other lamp in a moment.</p>
+  <!-- first time on this phone: who's this, and the passcode -->
+  <div class="panel hidden" id="setup">
+    <div class="welcome">
+      <h2>Love Lamp</h2>
+      <p>The lamp, a heart, a photo, from your phone.</p>
     </div>
-    <button type="button" class="who-pill press hidden" id="change" aria-label="Change who's sending">Benji</button>
+    <div class="stage" data-stage="setup" aria-hidden="true" style="height: clamp(9rem, 26vh, 15rem)"></div>
+    <section class="glass" aria-label="Set up this phone">
+      <p class="label">Who's this?</p>
+      <div class="seg" id="who" role="group" aria-label="Who's this">
+        <span class="thumb" aria-hidden="true"></span>
+        <button type="button" data-me="A" aria-pressed="false">Benji</button>
+        <button type="button" data-me="B" aria-pressed="false">Julie</button>
+      </div>
+      <p class="label"><label for="pass">Lamp passcode</label></p>
+      <input id="pass" type="password" autocomplete="current-password" placeholder="Passcode" enterkeyhint="done">
+      <p class="note">Asked once. This phone remembers it.</p>
+      <button type="button" class="primary press" id="save">Continue</button>
+      <p class="status" id="setupStatus" role="status"></p>
+    </section>
+  </div>
+
+  <header id="top" class="hidden">
+    <div>
+      <h1 id="title">Love Lamp</h1>
+      <p class="sub" id="sub"><span class="dot" id="connDot"></span><span id="connText">Connecting…</span></p>
+    </div>
+    <button type="button" class="who press" id="change" aria-label="Change who this is">
+      <span id="whoName">Benji</span>
+      <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="m3 4.5 3 3 3-3"/></svg>
+    </button>
   </header>
 
-  <!-- once per phone: who's sending, and the passcode -->
-  <section class="sheet" id="setup" aria-labelledby="setupLabel">
-    <p class="eyebrow" id="setupLabel">Who's sending</p>
-    <div class="segmented" id="who" role="group" aria-label="Who's sending">
-      <span class="thumb" aria-hidden="true"></span>
-      <button type="button" data-me="A" aria-pressed="false">Benji</button>
-      <button type="button" data-me="B" aria-pressed="false">Julie</button>
+  <!-- the Lamp: your own lamp's light -->
+  <div class="panel hidden" id="tab-lamp" role="tabpanel" aria-labelledby="t-lamp">
+    <div class="hero">
+      <button type="button" class="lamp" id="lamp" role="switch" aria-checked="true" aria-label="Your lamp's light">
+        <span class="halo" aria-hidden="true"></span>
+        <span class="globe" id="globe" aria-hidden="true"></span>
+        <span class="base" aria-hidden="true"></span>
+      </button>
+      <div class="caption" aria-live="polite"><b id="lampState">On</b><span id="lampHint">Tap the globe to turn it off</span></div>
     </div>
-    <p class="eyebrow"><label for="pass">Photo passcode</label></p>
-    <input id="pass" type="password" autocomplete="current-password" placeholder="Passcode" enterkeyhint="done">
-    <p class="hint">Asked once. This phone remembers it.</p>
-    <button type="button" class="primary press" id="save">Continue</button>
-    <p class="status" id="setupStatus" role="status"></p>
-  </section>
+    <div class="stage" data-stage="lamp" aria-hidden="true"></div>
+    <section class="glass" aria-label="Brightness">
+      <div class="row"><p class="label"><label for="bright">Brightness</label></p><span class="num" id="brightVal">43%</span></div>
+      <input type="range" id="bright" min="10" max="255" value="110">
+    </section>
+    <section class="glass" aria-label="Colour">
+      <div class="seg" id="mode" role="group" aria-label="What the light follows">
+        <span class="thumb" aria-hidden="true"></span>
+        <button type="button" data-mode="own" aria-pressed="false">My colour</button>
+        <button type="button" data-mode="day" aria-pressed="false">The day</button>
+        <button type="button" data-mode="world" aria-pressed="false">The world</button>
+      </div>
+      <p class="note" id="modeNote"></p>
+      <div class="beads" id="beads" role="group" aria-label="Colours"></div>
+      <div class="chips" id="effects" role="group" aria-label="Effects"></div>
+    </section>
+    <button type="button" class="quiet press" id="share">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20.5s-7.3-4.5-9.3-8.9C1.3 8.4 3.3 5 6.5 5c2.3 0 3.9 1.4 5.5 3.4C13.6 6.4 15.2 5 17.5 5c3.2 0 5.2 3.4 3.8 6.6-2 4.4-9.3 8.9-9.3 8.9z"/></svg>
+      <span id="shareLabel">Send this glow to Julie</span>
+    </button>
+  </div>
 
-  <!-- then: a photo, a little note, send -->
-  <section class="sheet hidden" id="send" aria-label="Send a photo">
-    <label class="well press" id="well">
+  <!-- Love: a heart, tap codes, my mood -->
+  <div class="panel hidden" id="tab-love" role="tabpanel" aria-labelledby="t-love">
+    <div class="love-hero">
+      <button type="button" class="heart-orb press" id="heartBtn" aria-describedby="heartHint">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20.5s-7.3-4.5-9.3-8.9C1.3 8.4 3.3 5 6.5 5c2.3 0 3.9 1.4 5.5 3.4C13.6 6.4 15.2 5 17.5 5c3.2 0 5.2 3.4 3.8 6.6-2 4.4-9.3 8.9-9.3 8.9z"/></svg>
+      </button>
+      <div class="caption"><b id="heartLabel">Send a heart</b><span id="heartHint">Your pup carries it over</span></div>
+    </div>
+    <div class="stage" data-stage="love" aria-hidden="true"></div>
+    <section class="glass" aria-label="Tap codes">
+      <p class="label">Tap on their globe</p>
+      <div class="codes" id="codes"></div>
+    </section>
+    <section class="glass" aria-label="My mood">
+      <div class="row"><p class="label">My mood</p><span class="note" style="margin:0">tints their globe for 4 hours</span></div>
+      <div class="moods" id="moods" role="group" aria-label="Mood colours"></div>
+    </section>
+  </div>
+
+  <!-- Photo: a polaroid for their lamp -->
+  <div class="panel hidden" id="tab-photo" role="tabpanel" aria-labelledby="t-photo">
+    <label class="polaroid" id="polaroid">
       <input id="file" type="file" accept="image/*">
-      <span class="empty">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/>
-        </svg>
-        Choose a photo
-        <small>It's fitted to the lamp's screen</small>
+      <span class="print">
+        <span class="empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="5" width="18" height="14" rx="3"/><circle cx="8.5" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/>
+          </svg>
+          Choose a photo
+          <small>Fitted to the lamp's screen</small>
+        </span>
+        <canvas id="canvas" width="480" height="320" aria-label="Your photo"></canvas>
       </span>
-      <canvas id="canvas" width="480" height="320" aria-label="Your photo"></canvas>
-      <span class="change">Change</span>
+      <span class="ink blank" id="ink" aria-hidden="true">a little note</span>
     </label>
-    <div class="note-row">
-      <input id="caption" type="text" maxlength="80" placeholder="Add a little note" enterkeyhint="send" aria-label="A little note">
-      <span class="count" id="count">80</span>
-    </div>
-    <button type="button" class="primary press" id="go" disabled><span class="spin" aria-hidden="true"></span><span id="goLabel">Send</span></button>
-    <p class="status" id="status" role="status"></p>
-  </section>
-
-  <div class="spacer"></div>
+    <section class="glass" aria-label="Send the photo">
+      <div class="note-row">
+        <input id="caption" type="text" maxlength="80" placeholder="Write a little note" enterkeyhint="send" aria-label="A little note">
+        <span class="count" id="count">80</span>
+      </div>
+      <button type="button" class="primary press" id="go" disabled><span class="spin" aria-hidden="true"></span><span id="goLabel">Send</span></button>
+      <p class="status" id="status" role="status"></p>
+    </section>
+  </div>
 </main>
 
+<nav class="tabbar hidden" id="tabbar" aria-label="Sections">
+  <div class="inner" role="tablist">
+    <button type="button" class="tab" role="tab" id="t-lamp" data-tab="lamp" aria-controls="tab-lamp">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="10" r="6.4"/><path d="M8.2 18.3h7.6M9.6 21h4.8"/><path d="M9.3 7.6A3.6 3.6 0 0 1 12 6.3" opacity=".6"/>
+      </svg>Lamp
+    </button>
+    <button type="button" class="tab" role="tab" id="t-love" data-tab="love" aria-controls="tab-love">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 20s-7-4.3-8.9-8.5C1.7 8.4 3.6 5.3 6.6 5.3c2.2 0 3.7 1.4 5.4 3.4 1.7-2 3.2-3.4 5.4-3.4 3 0 4.9 3.1 3.5 6.2C19 15.7 12 20 12 20z"/>
+      </svg>Love
+    </button>
+    <button type="button" class="tab" role="tab" id="t-photo" data-tab="photo" aria-controls="tab-photo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="4" y="3.5" width="16" height="17" rx="1.6"/><rect x="6.5" y="6" width="11" height="9" rx=".8"/>
+      </svg>Photo
+    </button>
+  </div>
+</nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
 <script>
-// Love Lamp photo page.  The photo goes to the OTHER person's lamp (and a
-// quiet copy to your own, so both keep the whole album): fitted to the lamp's
-// screen (480 x 320), a JPEG under ~60 KB, sent through the lamps' broker
-// (MQTT over secure WebSocket) to their photo topics.  The page holds no
-// password: the passcode is asked once and kept on this phone.
+// Love Lamp, from your phone.  Everything goes through the lamps' broker
+// (MQTT over secure WebSocket) on the lamps' photo topics, the only ones this
+// page's login may use:
+//   - photos go to the OTHER person's lamp (and a quiet copy to your own, so
+//     both keep the whole album);
+//   - the light, hearts, tap codes and moods go to YOUR OWN lamp ("ctl"),
+//     which does them just as if its own screen were tapped.
+// The page holds no password: the passcode is asked once and kept on this
+// phone.  It's connected only while it's open in front of you.
 const BROKER = "wss://w7f280b2.ala.us-east-1.emqxsl.com:8084/mqtt";
 const PAIR = "ll-41205afa9e";
 const USER = "lamp-photos";
 const NAMES = { A: "Benji", B: "Julie" };
 const PETS = { A: "pup", B: "kitten" };
 const MAX_BYTES = 60000;
+const COLORS = [
+  ["Warm white", "#ffb070"], ["Candle", "#ff8a3c"], ["Peach", "#ff9e7a"], ["Rose", "#ff6fa5"],
+  ["Lavender", "#b79cff"], ["Sky", "#6fb7ff"], ["Moonlight", "#ffe9cf"],
+];
+const EFFECTS = [
+  ["solid", "Steady"], ["warm", "Warm glow"], ["pulse", "Soft pulse"],
+  ["candle", "Candle"], ["aurora", "Aurora"], ["heartbeat", "Heartbeat"],
+];
+const CODES = [[3, "I love you"], [4, "I miss you"], [5, "Come here"]];
+const MOODS = [
+  ["Happy", "#ffd25a"], ["Loved", "#ff6fa5"], ["Calm", "#6fb7ff"],
+  ["Cozy", "#ff9450"], ["Missing you", "#b79cff"], ["Clear", ""],
+];
+// "#preview": the page as it looks, without the broker (nothing is sent)
+const PREVIEW = location.hash === "#preview";
 const reduced = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const $ = (id) => document.getElementById(id);
@@ -233,49 +504,172 @@ const store = {
 };
 let me = store.get("ll.me");
 let pass = store.get("ll.pass");
+let tab = store.get("ll.tab") || "lamp";
 let photo = null;   // the JPEG to send (Uint8Array)
 const other = () => (me === "A" ? "B" : "A");
+// what this phone last told its lamp (the lamp doesn't report back, so it's remembered here)
+let lamp = { on: true, c: "#ffb070", br: 110, fx: "solid", mode: "day", mood: "" };
+try { Object.assign(lamp, JSON.parse(store.get("ll.lamp") || "{}")); } catch (e) {}
+const saveLamp = () => store.set("ll.lamp", JSON.stringify(lamp));
 
-// ---- the world behind: theirs once we know who you are; before, the two take turns
-let drift = null;
-function setWorld(id) {
-  $("worldA").classList.toggle("on", id === "A");
-  $("worldB").classList.toggle("on", id === "B");
+function hexId() {
+  const a = new Uint8Array(4);
+  crypto.getRandomValues(a);
+  return Array.from(a, (x) => x.toString(16).padStart(2, "0")).join("");
 }
-function showWorld() {
+
+// ---- the toast: what just happened
+let toastTimer = null;
+function toast(text, err) {
+  const t = $("toast");
+  t.textContent = text;
+  t.classList.toggle("err", !!err);
+  t.classList.add("on");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("on"), err ? 4200 : 2400);
+}
+
+// ---- the connection: one, while the page is in front of you
+let client = null, upState = "down";
+function setUp(state) {
+  upState = state;
+  $("connDot").className = "dot" + (state === "up" ? " up" : state === "trying" ? " trying" : "");
+  $("connText").textContent = state === "up" ? "Connected" : state === "trying" ? "Connecting…" : "Not connected";
+}
+function connect() {
+  if (PREVIEW) { setUp("up"); return null; }
+  if (client || !me || !pass) return client;
+  setUp("trying");
+  client = mqtt.connect(BROKER, {
+    username: USER, password: pass, clientId: "lamp-page-" + me + "-" + hexId(),
+    clean: true, connectTimeout: 15000, reconnectPeriod: 4000, keepalive: 45,
+    protocolVersion: 5,   // (so a send the broker refuses comes back as an error, not silence)
+  });
+  client.on("connect", () => setUp("up"));
+  client.on("reconnect", () => setUp("trying"));
+  client.on("offline", () => setUp("down"));
+  client.on("error", (e) => {
+    if (/auth|not authorized|bad user/i.test(String(e && e.message))) {
+      toast("That passcode didn't work. Tap your name to enter it again.", true);
+      disconnect();
+    }
+  });
+  return client;
+}
+function disconnect() {
+  if (client) client.end(true);
+  client = null;
+  setUp("down");
+}
+let hideTimer = null;
+document.addEventListener("visibilitychange", () => {
+  clearTimeout(hideTimer);
+  if (document.hidden) hideTimer = setTimeout(disconnect, 20000);   // (back within 20 s: still connected)
+  else if (me && pass) connect();
+});
+
+// Publishes `obj` to a lamp's topic; resolves once the broker has it.
+function send(to, obj, opts = {}) {
+  if (PREVIEW) return new Promise((ok) => setTimeout(ok, 250));
+  return new Promise((ok, bad) => {
+    const c = connect();
+    if (!c) return bad(new Error("not set up"));
+    const msg = JSON.stringify(Object.assign({ v: 1, id: hexId(), from: me, ts: Math.floor(Date.now() / 1000) }, obj));
+    const timer = setTimeout(() => bad(new Error("timeout")), 20000);
+    const go = () => c.publish(`ll/${PAIR}/${to}/photo`, msg,
+      { qos: 1, properties: opts.expiry ? { messageExpiryInterval: opts.expiry } : undefined }, (err, packet) => {
+        clearTimeout(timer);
+        if (err || (packet && packet.reasonCode >= 0x80)) bad(err || new Error("refused " + packet.reasonCode));
+        else ok();
+      });
+    if (c.connected) go(); else c.once("connect", go);
+  });
+}
+// a control for my own lamp: it's dropped if the lamp can't take it within a minute
+const control = (obj) => send(me, Object.assign({ t: "ctl" }, obj), { expiry: 60 });
+const failed = () => toast("Couldn't reach the lamps. Check the internet and try again.", true);
+
+// ---- the scene: yours on the Lamp tab; theirs, with both pets, for love; theirs for photos
+let drift = null;
+function setScene(id) {
+  document.querySelectorAll(".scene").forEach((s) => s.classList.toggle("on", s.id === "s-" + id));
+}
+function showScene() {
   clearInterval(drift);
-  if (me) { setWorld(other()); return; }
-  let w = "B";
-  setWorld(w);
-  if (!reduced()) drift = setInterval(() => { w = w === "A" ? "B" : "A"; setWorld(w); }, 6000);
+  if (!(me && pass)) {   // first time: the two snuggled up, taking turns
+    let w = "B";
+    setScene("together-" + w);
+    placeScene();
+    if (!reduced()) drift = setInterval(() => { w = w === "A" ? "B" : "A"; setScene("together-" + w); placeScene(); }, 7000);
+    return;
+  }
+  setScene(tab === "lamp" ? "dusk-" + me : tab === "love" ? "together-" + other() : "dusk-" + other());
+}
+
+// Where each picture's pets are (as fractions of the 960 x 640 render): the
+// scene is scaled and placed so they sit in the open "stage" under the lamp or
+// the heart (or, with no stage, a little below the middle).
+const PETS_AT = { "dusk-A": [.45, .66], "dusk-B": [.6, .68], "together-A": [.37, .72], "together-B": [.53, .72] };
+function placeScene() {
+  const W = innerWidth, H = innerHeight;
+  // (on the Photo tab the pet waits behind the polaroid: the photo's going to its world)
+  const stage = document.querySelector(`#setup:not(.hidden) .stage, .panel:not(.hidden) .stage, .panel:not(.hidden) .polaroid`);
+  const ty = stage ? stage.getBoundingClientRect().top + window.scrollY + stage.offsetHeight * .5 : H * .55;
+  const el = document.querySelector(".scene.on");   // (only the one coming in: the one going keeps its place while it fades)
+  if (!el) return;
+  const [fx, fy] = PETS_AT[el.id.slice(2)];
+  // a picture about two thirds of the screen tall (never narrower than it), its edges fading into the dusk
+  const s = Math.max(W / 960, (H * .64) / 640), iw = 960 * s, ih = 640 * s;
+  const x = Math.min(0, Math.max(W - iw, W / 2 - fx * iw));
+  const y = Math.min(H * .1, Math.max(H * .5 - ih, ty - fy * ih));   // (below it, the dusk)
+  Object.assign(el.style, { inset: "auto", left: Math.round(x) + "px", top: Math.round(y) + "px",
+                            width: Math.round(iw) + "px", height: Math.round(ih) + "px", backgroundSize: "100% 100%" });
+}
+addEventListener("resize", () => requestAnimationFrame(placeScene));
+
+function placeThumb(group, value, key) {
+  const btns = [...group.querySelectorAll(`[data-${key}]`)];
+  const i = btns.findIndex((b) => b.dataset[key] === value);
+  const th = group.querySelector(".thumb");
+  th.style.width = `calc(${100 / btns.length}% - ${6 / btns.length}px)`;
+  th.style.opacity = i < 0 ? 0 : 1;
+  if (i >= 0) th.style.transform = `translateX(${i * 100}%)`;
+  btns.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset[key] === value)));
 }
 
 function showMode() {
-  showWorld();
   const ready = !!(me && pass);
+  document.body.dataset.tab = ready ? tab : "setup";
   $("setup").classList.toggle("hidden", ready);
-  $("send").classList.toggle("hidden", !ready);
-  $("change").classList.toggle("hidden", !ready);
-  if (ready) {
-    $("title").textContent = `For ${NAMES[other()]}`;
-    $("lede").textContent = `A photo for ${NAMES[other()]}'s lamp, by the ${PETS[other()]}.`;
-    $("change").textContent = `${NAMES[me]} · Change`;
-    $("goLabel").textContent = `Send to ${NAMES[other()]}`;
-  } else {
-    $("title").textContent = "Send a photo to the lamp";
-    $("lede").textContent = "First, who's this?";
-  }
-  $("who").dataset.on = me || "";
-  document.querySelectorAll("[data-me]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.me === me)));
+  $("top").classList.toggle("hidden", !ready);
+  $("tabbar").classList.toggle("hidden", !ready);
+  ["lamp", "love", "photo"].forEach((t) => {
+    $("tab-" + t).classList.toggle("hidden", !ready || t !== tab);
+    const b = $("t-" + t);
+    b.setAttribute("aria-selected", String(t === tab));
+    b.tabIndex = t === tab ? 0 : -1;
+  });
+  placeThumb($("who"), me || "", "me");
+  showScene();
+  if (!ready) return;
+  $("title").textContent = tab === "lamp" ? `${NAMES[me]}'s lamp` : `For ${NAMES[other()]}`;
+  $("whoName").textContent = NAMES[me];
+  $("goLabel").textContent = `Send to ${NAMES[other()]}`;
+  $("shareLabel").textContent = `Send this glow to ${NAMES[other()]}`;
+  $("heartLabel").textContent = `Send ${NAMES[other()]} a heart`;
+  $("heartHint").textContent = `Your ${PETS[me]} carries it over`;
+  setUp(upState);
+  renderLamp();
+  renderMood();
+  connect();
+  requestAnimationFrame(() => { trackGlobe(); placeScene(); });
 }
 
-document.querySelectorAll("[data-me]").forEach((b) =>
-  b.addEventListener("click", () => { me = b.dataset.me; showMode(); }));
-
+document.querySelectorAll("[data-me]").forEach((b) => b.addEventListener("click", () => { me = b.dataset.me; placeThumb($("who"), me, "me"); }));
 $("save").addEventListener("click", () => {
   const p = $("pass").value.trim();
-  if (!me) { setStatus("setupStatus", "Choose who's sending first.", "err"); return; }
-  if (!p) { setStatus("setupStatus", "Enter the photo passcode.", "err"); $("pass").focus(); return; }
+  if (!me) { setStatus("setupStatus", "Choose who you are first.", "err"); return; }
+  if (!p) { setStatus("setupStatus", "Enter the lamp passcode.", "err"); $("pass").focus(); return; }
   pass = p;
   store.set("ll.me", me);
   store.set("ll.pass", pass);
@@ -284,22 +678,213 @@ $("save").addEventListener("click", () => {
   showMode();
 });
 $("pass").addEventListener("keydown", (e) => { if (e.key === "Enter") $("save").click(); });
-
 $("change").addEventListener("click", () => {
+  disconnect();
   store.del("ll.me"); store.del("ll.pass");
   me = null; pass = null; showMode();
 });
 
+// ---- the tabs
+document.querySelectorAll(".tab").forEach((b) => b.addEventListener("click", () => {
+  if (tab === b.dataset.tab) return;
+  tab = b.dataset.tab;
+  store.set("ll.tab", tab);
+  window.scrollTo(0, 0);
+  showMode();
+}));
+$("tabbar").addEventListener("keydown", (e) => {   // arrow keys move between tabs
+  const order = ["lamp", "love", "photo"];
+  const k = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+  if (!k) return;
+  const next = order[(order.indexOf(tab) + k + 3) % 3];
+  $("t-" + next).click();
+  $("t-" + next).focus();
+});
+
+// ---- the Lamp tab
+// the globe's light spills over the world from wherever the globe is on screen
+function trackGlobe() {
+  if (tab !== "lamp") return;
+  const r = $("globe").getBoundingClientRect();
+  document.documentElement.style.setProperty("--gy", (r.top + r.height / 2) + "px");
+}
+addEventListener("scroll", () => requestAnimationFrame(trackGlobe), { passive: true });
+addEventListener("resize", () => requestAnimationFrame(trackGlobe));
+
+function renderLamp() {
+  const root = document.documentElement.style;
+  const glow = lamp.mode === "own" ? lamp.c : lamp.mode === "day" ? dayColour() : "#ffb46a";
+  root.setProperty("--glow", glow);
+  root.setProperty("--level", ((lamp.br - 10) / 245).toFixed(3));
+  root.setProperty("--lit", lamp.on ? "1" : "0");
+  $("lamp").setAttribute("aria-checked", String(lamp.on));
+  $("lamp").dataset.fx = lamp.on && lamp.mode === "own" && !reduced() ? lamp.fx : "";
+  const fxName = (EFFECTS.find((e) => e[0] === lamp.fx) || ["", "Steady"])[1];
+  $("lampState").textContent = !lamp.on ? "Off"
+    : lamp.mode === "day" ? "Following the day" : lamp.mode === "world" ? "Matching the world" : fxName;
+  $("lampHint").textContent = lamp.on ? "Tap the globe to turn it off" : "Tap the globe to turn it on";
+  const b = $("bright");
+  b.value = lamp.br;
+  b.style.setProperty("--fill", ((lamp.br - 10) / 245).toFixed(3));
+  $("brightVal").textContent = Math.round((lamp.br / 255) * 100) + "%";
+  placeThumb($("mode"), lamp.mode, "mode");
+  $("modeNote").textContent = lamp.mode === "day"
+    ? "Bright white while the sun's up, golden at sunset, warmer and dimmer until bedtime. Pick a colour to choose your own."
+    : lamp.mode === "world" ? "The globe takes the colours of the lakeside's time of day. Pick a colour to choose your own."
+    : "";
+  $("modeNote").classList.toggle("hidden", lamp.mode === "own");
+  const own = lamp.mode === "own";
+  document.querySelectorAll(".bead[data-c]").forEach((s) =>
+    s.setAttribute("aria-pressed", String(own && s.dataset.c.toLowerCase() === lamp.c.toLowerCase())));
+  const custom = !COLORS.some((c) => c[1].toLowerCase() === lamp.c.toLowerCase());
+  const any = $("anyColour").parentElement;
+  any.setAttribute("aria-pressed", String(own && custom));
+  if (own && custom) any.style.setProperty("--c", lamp.c);
+  document.querySelectorAll(".chip[data-fx]").forEach((c) => c.setAttribute("aria-pressed", String(own && c.dataset.fx === lamp.fx)));
+  $("effects").classList.toggle("dim", !own);
+}
+// roughly what "following the day" looks like right now (the lamp has the real sunset)
+function dayColour() {
+  const h = new Date().getHours() + new Date().getMinutes() / 60;
+  if (h >= 9 && h < 17) return "#ffeedd";
+  if (h >= 17 && h < 19.5) return "#ffb86a";
+  if (h >= 19.5 && h < 21.5) return "#ff9450";
+  if (h >= 7 && h < 9) return "#ffd9b0";
+  return "#ff6a28";
+}
+function setLamp(changes, wire) {
+  Object.assign(lamp, changes);
+  saveLamp();
+  renderLamp();
+  return control(wire).catch(failed);
+}
+const buzz = (p) => { if (navigator.vibrate) navigator.vibrate(p); };
+
+$("lamp").addEventListener("click", () => { buzz(8); setLamp({ on: !lamp.on }, { lamp: !lamp.on }); });
+
+// brightness: the globe follows the finger; the lamp hears it a few times a second, and on letting go
+let brTimer = null, brSent = 0;
+$("bright").addEventListener("input", (e) => {
+  lamp.br = +e.target.value;
+  lamp.on = true;
+  renderLamp();
+  const now = Date.now();
+  clearTimeout(brTimer);
+  const go = () => { brSent = Date.now(); control({ br: lamp.br, lamp: true }).catch(() => {}); };
+  if (now - brSent > 300) go(); else brTimer = setTimeout(go, 300);
+});
+$("bright").addEventListener("change", () => { clearTimeout(brTimer); saveLamp(); control({ br: lamp.br, lamp: true }).catch(failed); });
+
+document.querySelectorAll("[data-mode]").forEach((b) => b.addEventListener("click", () => {
+  const m = b.dataset.mode;
+  setLamp({ mode: m, on: true }, m === "own" ? { c: lamp.c, fx: lamp.fx, lamp: true } : { mode: m, lamp: true });
+}));
+
+COLORS.forEach(([name, c]) => {
+  const s = document.createElement("button");
+  s.type = "button";
+  s.className = "bead press";
+  s.dataset.c = c;
+  s.style.setProperty("--c", c);
+  s.setAttribute("aria-label", name);
+  s.addEventListener("click", () => {
+    const fx = lamp.fx === "aurora" ? "solid" : lamp.fx;
+    setLamp({ c, fx, mode: "own", on: true }, { c, fx, lamp: true });
+  });
+  $("beads").appendChild(s);
+});
+{
+  const s = document.createElement("label");
+  s.className = "bead any press";
+  s.innerHTML = `<input type="color" id="anyColour" value="#ffb070" aria-label="Any colour">`;
+  $("beads").appendChild(s);
+  let t = null;
+  s.querySelector("input").addEventListener("input", (e) => {   // live while choosing, gently
+    const c = e.target.value;
+    Object.assign(lamp, { c, mode: "own", on: true, fx: lamp.fx === "aurora" ? "solid" : lamp.fx });
+    renderLamp();
+    clearTimeout(t);
+    t = setTimeout(() => { saveLamp(); control({ c, fx: lamp.fx, lamp: true }).catch(failed); }, 250);
+  });
+}
+
+EFFECTS.forEach(([fx, name]) => {
+  const c = document.createElement("button");
+  c.type = "button";
+  c.className = "chip press";
+  c.dataset.fx = fx;
+  c.textContent = name;
+  c.addEventListener("click", () => setLamp({ fx, mode: "own", on: true }, { fx, c: lamp.c, lamp: true }));
+  $("effects").appendChild(c);
+});
+
+$("share").addEventListener("click", () => {
+  buzz(10);
+  control({ do: "share" }).then(() => toast(`Your glow is on ${NAMES[other()]}'s lamp for a minute`)).catch(failed);
+});
+
+// ---- the Love tab
+$("heartBtn").addEventListener("click", () => {
+  const b = $("heartBtn");
+  b.classList.remove("sent");
+  void b.offsetWidth;
+  b.classList.add("sent");
+  buzz([12, 60, 18]);
+  const r = b.getBoundingClientRect();
+  hearts({ x: r.left + r.width / 2, y: r.top + r.height / 3 }, 8);
+  control({ do: "heart" }).then(() => toast(`Heart on its way to ${NAMES[other()]}`)).catch(failed);
+});
+CODES.forEach(([n, text]) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "code press";
+  b.innerHTML = `<span>${text}</span><span class="taps" aria-hidden="true">${Array.from({ length: n }, (_, i) => `<i style="--i:${i}"></i>`).join("")}</span>`;
+  b.setAttribute("aria-label", `${text}: ${n} taps on their globe`);
+  b.addEventListener("click", () => {
+    buzz(Array.from({ length: n * 2 - 1 }, (_, i) => (i % 2 ? 620 : 30)));
+    b.classList.remove("playing");
+    void b.offsetWidth;
+    b.classList.add("playing");
+    control({ do: "taps", n }).then(() => toast(`"${text}" on ${NAMES[other()]}'s globe`)).catch(failed);
+  });
+  $("codes").appendChild(b);
+});
+function renderMood() {
+  document.querySelectorAll(".mood").forEach((m) => m.setAttribute("aria-pressed", String(!!lamp.mood && m.dataset.c === lamp.mood)));
+}
+MOODS.forEach(([name, c]) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.className = "mood press" + (c ? "" : " clear");
+  b.dataset.c = c;
+  b.style.setProperty("--c", c || "transparent");
+  b.innerHTML = `<i aria-hidden="true"></i>${name}`;
+  b.addEventListener("click", () => {
+    lamp.mood = c;
+    saveLamp();
+    renderMood();
+    buzz(8);
+    control({ do: "mood", c }).then(() => toast(c ? `${NAMES[other()]}'s globe has a touch of ${name.toLowerCase()}` : "Mood cleared")).catch(failed);
+  });
+  $("moods").appendChild(b);
+});
+
+// ---- the Photo tab
 function setStatus(id, text, kind) {
   const el = $(id);
   el.textContent = text;
   el.className = "status" + (kind ? " " + kind : "");
 }
-
-$("caption").addEventListener("input", () => { $("count").textContent = 80 - $("caption").value.length; });
+function showInk() {
+  const v = $("caption").value.trim();
+  $("ink").textContent = v || "a little note";
+  $("ink").classList.toggle("blank", !v);
+  $("count").textContent = 80 - $("caption").value.length;
+}
+$("caption").addEventListener("input", showInk);
 $("caption").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("go").disabled) $("go").click(); });
 
-// ---- the photo, the right way up, fitted inside 480 x 320 (nothing cropped)
+// the photo, the right way up, fitted inside 480 x 320 (nothing cropped)
 $("file").addEventListener("change", async () => {
   const f = $("file").files[0];
   if (!f) return;
@@ -328,11 +913,11 @@ $("file").addEventListener("change", async () => {
       q -= 0.08;
     } while (blob.size > MAX_BYTES && q > 0.3);
     photo = new Uint8Array(await blob.arrayBuffer());
-    $("well").classList.add("has");
+    $("polaroid").classList.add("has");
     $("go").disabled = false;
     setStatus("status", "");
   } catch (e) {
-    setStatus("status", "That photo couldn't be opened. Try another?", "err");
+    setStatus("status", "That photo couldn't be opened. Choose another one.", "err");
   }
 });
 
@@ -341,43 +926,43 @@ function b64(bytes) {
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
   return btoa(s);
 }
-function hexId() {
-  const a = new Uint8Array(4);
-  crypto.getRandomValues(a);
-  return Array.from(a, (x) => x.toString(16).padStart(2, "0")).join("");
-}
 
-// ---- sent: the photo flies down into their world, toward the pet; hearts rise there
+// sent: the polaroid flies off into their world, toward the pet; hearts rise there
 function celebrate() {
-  const target = { x: innerWidth * 0.5, y: innerHeight * 0.8 };   // the pet's spot on the dock
-  if (reduced()) { hearts(target, 5); return; }
-  const c = $("canvas"), r = c.getBoundingClientRect();
-  const fly = document.createElement("img");
-  fly.className = "flyer";
-  fly.src = c.toDataURL("image/jpeg", 0.8);
-  Object.assign(fly.style, { left: r.left + "px", top: r.top + "px", width: r.width + "px", height: r.height + "px" });
+  const target = { x: innerWidth * 0.5, y: innerHeight * 0.12 };
+  if (reduced()) { hearts({ x: innerWidth / 2, y: innerHeight * .4 }, 3); return; }
+  const p = $("polaroid"), r = p.getBoundingClientRect();
+  const fly = p.cloneNode(true);
+  fly.removeAttribute("id");
+  fly.querySelectorAll("[id]").forEach((n) => n.removeAttribute("id"));
+  const cv = fly.querySelector("canvas");
+  if (cv) { const im = document.createElement("img"); im.src = $("canvas").toDataURL("image/jpeg", .8); im.style.width = "100%"; cv.replaceWith(im); }
+  fly.classList.add("flyer");
+  Object.assign(fly.style, { left: r.left + "px", top: r.top + "px", width: r.width + "px", margin: 0 });
   document.body.appendChild(fly);
   const dx = target.x - (r.left + r.width / 2), dy = target.y - (r.top + r.height / 2);
   const anim = fly.animate([
     { transform: "translate(0, 0) scale(1) rotate(0deg)", opacity: 1 },
-    { transform: `translate(${dx * 0.55}px, ${dy * 0.4}px) scale(.55) rotate(-4deg)`, opacity: 1, offset: 0.55 },
-    { transform: `translate(${dx}px, ${dy}px) scale(.12) rotate(-8deg)`, opacity: 0 },
-  ], { duration: 900, easing: "cubic-bezier(.4, 0, .2, 1)" });
-  anim.onfinish = () => { fly.remove(); hearts(target, 9); };
+    { transform: `translate(${dx * .3}px, ${dy * .45}px) scale(.62) rotate(6deg)`, opacity: 1, offset: .5 },
+    { transform: `translate(${dx}px, ${dy}px) scale(.08) rotate(14deg)`, opacity: 0 },
+  ], { duration: 1050, easing: "cubic-bezier(.45, 0, .2, 1)" });
+  anim.onfinish = () => { fly.remove(); hearts({ x: innerWidth / 2, y: innerHeight * .3 }, 9); };
 }
 function hearts(at, n) {
+  if (reduced()) n = Math.min(n, 3);
   for (let i = 0; i < n; i++) {
     const h = document.createElement("div");
     h.className = "heart";
     h.textContent = "♥";
-    h.style.left = (at.x - 10 + (Math.random() - 0.5) * 90) + "px";
+    h.style.left = (at.x - 10 + (Math.random() - .5) * 110) + "px";
     h.style.top = (at.y - 20) + "px";
+    h.style.fontSize = (1 + Math.random() * .9) + "rem";
     document.body.appendChild(h);
     const a = h.animate([
       { transform: "translateY(0) scale(.6)", opacity: 0 },
-      { transform: "translateY(-30px) scale(1)", opacity: 1, offset: 0.2 },
-      { transform: `translateY(-${180 + Math.random() * 120}px) scale(1.1)`, opacity: 0 },
-    ], { duration: 2200 + Math.random() * 600, delay: i * 110, easing: "cubic-bezier(.2, .7, .3, 1)", fill: "both" });
+      { transform: "translateY(-30px) scale(1)", opacity: 1, offset: .2 },
+      { transform: `translate(${(Math.random() - .5) * 40}px, -${180 + Math.random() * 140}px) scale(1.1)`, opacity: 0 },
+    ], { duration: 2300 + Math.random() * 700, delay: i * 110, easing: "cubic-bezier(.2, .7, .3, 1)", fill: "both" });
     a.onfinish = () => h.remove();
   }
 }
@@ -388,52 +973,26 @@ function busy(on) {
   $("goLabel").textContent = on ? "Sending…" : `Send to ${NAMES[other()]}`;
 }
 
-$("go").addEventListener("click", () => {
+$("go").addEventListener("click", async () => {
   if (!photo) return;
   busy(true);
   setStatus("status", "");
-  const msg = JSON.stringify({
-    v: 1, id: hexId(), t: "photo", from: me, ts: Math.floor(Date.now() / 1000),
-    cap: $("caption").value.trim().slice(0, 80), jpg: b64(photo),
-  });
-  const client = mqtt.connect(BROKER, {
-    username: USER, password: pass, clientId: "lamp-photos-" + hexId(),
-    clean: true, connectTimeout: 15000, reconnectPeriod: 0,
-    protocolVersion: 5,   // (so a send the broker refuses comes back as an error, not silence)
-  });
-  let done = false;
-  const finish = (text, kind) => {
-    if (done) return;
-    done = true;
-    busy(false);
-    setStatus("status", text, kind);
-    client.end(true);
-  };
-  client.on("connect", () => {
-    client.publish(`ll/${PAIR}/${other()}/photo`, msg, { qos: 1 }, (err, packet) => {
-      const refused = packet && packet.reasonCode >= 0x80;
-      if (err || refused) {
-        finish(refused && packet.reasonCode === 0x87
-          ? "The lamps' broker isn't letting this login send photos yet (check its rules)."
-          : "It didn't go through. Try again?", "err");
-        return;
-      }
-      // and a quiet copy for my own lamp, so both lamps keep the whole album
-      client.publish(`ll/${PAIR}/${me}/photo`, msg, { qos: 1 }, () => {
-        finish(`On ${NAMES[other()]}'s lamp now.`, "ok");
-        if (navigator.vibrate) navigator.vibrate(12);
-        celebrate();
-        $("caption").value = "";
-        $("count").textContent = 80;
-      });
-    });
-  });
-  client.on("error", (e) => {
-    const bad = /auth|not authorized|bad user/i.test(String(e && e.message));
-    finish(bad ? "That passcode didn't work. Tap your name above to enter it again." :
-                 "Couldn't reach the lamps. Check the internet and try again.", "err");
-  });
-  setTimeout(() => finish("Couldn't reach the lamps. Check the internet and try again.", "err"), 25000);
+  const id = hexId();
+  const msg = { id, t: "photo", cap: $("caption").value.trim().slice(0, 80), jpg: b64(photo) };
+  try {
+    await send(other(), msg);
+    await send(me, msg);   // a quiet copy for my own lamp's album
+    setStatus("status", `On ${NAMES[other()]}'s lamp now`, "ok");
+    buzz(14);
+    celebrate();
+    $("caption").value = "";
+    showInk();
+  } catch (e) {
+    const refused = /refused 135/.test(String(e && e.message));
+    setStatus("status", refused ? "The broker isn't letting this login send yet. Check its rules."
+                                : "It didn't go through. Check the internet and send it again.", "err");
+  }
+  busy(false);
 });
 
 showMode();
