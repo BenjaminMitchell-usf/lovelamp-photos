@@ -655,8 +655,50 @@ let albumItems = [];           // the list: [{id, ts, cap}], newest first
 const albumThumbs = new Map(); // id -> a data: URL
 const albumTopic = (k) => `ll/${PAIR}/album/${k}`;
 
+// The squares are kept on this phone (IndexedDB) once seen: opening the album
+// fetches only its list, then just the squares this phone hasn't got.  A photo
+// never changes under its id (a new photo is a new id), so what's kept stays
+// right; ones taken out of the list are dropped here too.
+const thumbDb = (() => {
+  let db = null;
+  const open = () => db || (db = new Promise((ok, bad) => {
+    try {
+      const r = indexedDB.open("lovelamp", 1);
+      r.onupgradeneeded = () => r.result.createObjectStore("thumbs");
+      r.onsuccess = () => ok(r.result);
+      r.onerror = () => bad(r.error);
+    } catch (e) { bad(e); }
+  }));
+  const tx = async (mode, fn) => {
+    const d = await open();
+    return new Promise((ok, bad) => {
+      const t = d.transaction("thumbs", mode);
+      const req = fn(t.objectStore("thumbs"));
+      t.oncomplete = () => ok(req && req.result);
+      t.onerror = () => bad(t.error);
+    });
+  };
+  return {
+    all: () => open().then((d) => new Promise((ok) => {   // id -> square, everything kept
+      const out = new Map();
+      const c = d.transaction("thumbs").objectStore("thumbs").openCursor();
+      c.onsuccess = () => { const cur = c.result; if (cur) { out.set(cur.key, cur.value); cur.continue(); } else ok(out); };
+      c.onerror = () => ok(out);
+    })).catch(() => new Map()),   // (private browsing and the like: nothing kept, they just come each time)
+    put: (id, url) => tx("readwrite", (st) => st.put(url, id)).catch(() => {}),
+    del: (id) => tx("readwrite", (st) => st.delete(id)).catch(() => {}),
+  };
+})();
+let thumbsLoaded = false;
+const thumbWaiting = new Map();   // id -> when we started listening for its square
+const thumbTried = new Set();      // (squares that didn't come this visit)
+
 function albumListen() {
   albumWanted = true;
+  if (!thumbsLoaded) {
+    thumbsLoaded = true;
+    thumbDb.all().then((m) => { m.forEach((url, id) => { if (!albumThumbs.has(id)) albumThumbs.set(id, url); }); renderAlbum(); fetchThumbs(); });
+  }
   renderAlbum();
   if (PREVIEW) return;
   const c = connect();
@@ -665,18 +707,44 @@ function albumListen() {
 function albumSubscribe() {
   if (albumSubscribed || !client) return;
   albumSubscribed = true;
-  client.subscribe([albumTopic("index"), albumTopic("t/+")], { qos: 1 });
+  thumbWaiting.clear();
+  client.subscribe(albumTopic("index"), { qos: 1 });
+}
+
+// Listens for the squares this phone hasn't got, a few at a time (each is
+// retained on album/t/<id>: subscribing brings it), and stops once each comes.
+function fetchThumbs() {
+  if (!client || !client.connected || !thumbsLoaded) return;
+  const now = Date.now();
+  thumbWaiting.forEach((t, id) => {   // one that hasn't come in 20 s: not this visit
+    if (now - t > 20000) { client.unsubscribe(albumTopic("t/" + id)); thumbWaiting.delete(id); thumbTried.add(id); }
+  });
+  for (const it of albumItems) {
+    if (thumbWaiting.size >= 8) break;
+    if (albumThumbs.has(it.id) || thumbWaiting.has(it.id) || thumbTried.has(it.id)) continue;
+    thumbWaiting.set(it.id, now);
+    client.subscribe(albumTopic("t/" + it.id), { qos: 1 });
+  }
+  if (thumbWaiting.size) setTimeout(fetchThumbs, 5000);
 }
 function onMessage(topic, payload) {
   const text = new TextDecoder().decode(payload);
   if (topic === albumTopic("index")) {
     try { albumItems = text ? (JSON.parse(text).items || []) : []; } catch (e) { return; }
+    // squares of photos no longer in the album go from this phone too
+    const ids = new Set(albumItems.map((it) => it.id));
+    [...albumThumbs.keys()].forEach((id) => { if (!ids.has(id)) { albumThumbs.delete(id); thumbDb.del(id); } });
     renderAlbum();
+    fetchThumbs();
   } else if (topic.startsWith(albumTopic("t/"))) {
     const id = topic.slice(albumTopic("t/").length);
-    if (text.startsWith("data:image/")) albumThumbs.set(id, text); else albumThumbs.delete(id);
+    if (thumbWaiting.has(id)) { thumbWaiting.delete(id); client.unsubscribe(topic); }
+    if (!text.startsWith("data:image/")) return;
+    albumThumbs.set(id, text);
+    thumbDb.put(id, text);
     const img = document.querySelector(`.tile[data-id="${id}"] img`);
-    if (img && text) { img.src = text; img.onload = () => img.classList.add("in"); }
+    if (img) { img.onload = () => img.classList.add("in"); img.src = text; }
+    fetchThumbs();
   }
 }
 // retained publishes; "" clears one
@@ -748,6 +816,7 @@ function openViewer(id) {
       await publishRetained(albumTopic("p/" + id), "");
       await publishRetained(albumTopic("t/" + id), "");
       albumThumbs.delete(id);
+      thumbDb.del(id);
       renderAlbum();
       close();
       toast("Deleted from both lamps");
@@ -805,6 +874,7 @@ $("addFiles").addEventListener("change", async (e) => {
       await publishRetained(albumTopic("p/" + id), JSON.stringify({ v: 1, id, ts, jpg: b64(full) }));
       await publishRetained(albumTopic("t/" + id), thumb);
       albumThumbs.set(id, thumb);
+      thumbDb.put(id, thumb);
       albumItems = [{ id, ts, cap: "" }, ...albumItems];
       await publishIndex();   // (each one as it goes: the lamps start fetching straight away)
       renderAlbum();
