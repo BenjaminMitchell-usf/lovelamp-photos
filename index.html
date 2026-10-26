@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Love Lamp Photos</title>
+<meta name="description" content="Send a photo to the other love lamp.">
+<meta name="theme-color" content="#f6ecd8">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lamp Photos">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:wght@600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/mqtt@5.10.1/dist/mqtt.min.js"></script>
+<style>
+  :root {
+    --card: rgba(255, 249, 238, .86); --ink: #3b2a1e; --soft: #7d6656; --gold: #c9a464;
+    --rose: #c2185b; --forest: #2e6b4f; --forest-deep: #1f4e39; --line: rgba(201, 164, 100, .55);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: #2a1d14; color: var(--ink); font: 600 17px/1.45 Nunito, system-ui, sans-serif;
+    min-height: 100vh; min-height: 100dvh; overflow-x: hidden;
+  }
+  /* the lamps' own worlds behind everything: the other one's, where the photo goes */
+  .world { position: fixed; inset: 0; background-size: cover; background-position: 50% 82%;
+           opacity: 0; transition: opacity 1.6s ease; z-index: 0; }
+  .world.on { opacity: 1; }
+  #worldA { background-image: url(world-A.jpg); }
+  #worldB { background-image: url(world-B.jpg); }
+  .veil { position: fixed; inset: 0; z-index: 1; pointer-events: none;
+          background: linear-gradient(180deg, rgba(20, 12, 6, .55) 0%, rgba(20, 12, 6, .15) 34%, rgba(20, 12, 6, 0) 60%); }
+  main {
+    position: relative; z-index: 2; max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px;
+    padding: max(22px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+             max(40vh, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  h1 { font: 700 30px/1.12 Lora, Georgia, serif; margin: 4px 0 0; color: #fff8ec; text-wrap: balance;
+       text-shadow: 0 2px 14px rgba(0, 0, 0, .55); }
+  .sub { color: #f6e7cf; margin: -6px 0 2px; text-shadow: 0 1px 8px rgba(0, 0, 0, .6); }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 20px; padding: 16px;
+    -webkit-backdrop-filter: blur(12px) saturate(1.1); backdrop-filter: blur(12px) saturate(1.1);
+    box-shadow: 0 10px 30px rgba(20, 10, 0, .35); display: flex; flex-direction: column; gap: 12px;
+  }
+  label { font-weight: 800; font-size: 13px; color: var(--soft); text-transform: uppercase; letter-spacing: .08em; }
+  .who { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button, .pick {
+    font: 800 17px Nunito, system-ui, sans-serif; border-radius: 999px; padding: 13px 18px; cursor: pointer;
+    border: 1px solid var(--gold); background: rgba(255, 252, 245, .9); color: var(--ink); text-align: center;
+    transition: transform .12s ease, box-shadow .12s ease;
+  }
+  button:active, .pick:active { transform: scale(.97); }
+  button.on { background: var(--ink); color: #fff9ee; border-color: var(--ink); }
+  button.primary { background: linear-gradient(#36795a, var(--forest-deep)); color: #fff9ee; border-color: var(--forest-deep);
+                   box-shadow: 0 4px 12px rgba(31, 78, 57, .35); }
+  button:disabled { opacity: .5; cursor: default; box-shadow: none; }
+  input[type=password], input[type=text] {
+    font: 600 17px Nunito, system-ui, sans-serif; padding: 12px 14px; border-radius: 12px;
+    border: 1px solid var(--line); background: rgba(255, 253, 248, .95); color: var(--ink); width: 100%;
+  }
+  .pick { display: block; background: linear-gradient(#fff4e2, #f2dcb8); }
+  .pick input { display: none; }
+  /* the photo, in a little wooden frame like the one on the lamp */
+  .frame { display: none; margin: 2px auto; padding: 9px; border-radius: 10px; max-width: 100%;
+           background: linear-gradient(135deg, #8a5d38, #5e3c22 55%, #7a5534);
+           box-shadow: inset 0 0 0 2px rgba(255, 220, 170, .25), 0 8px 20px rgba(0, 0, 0, .3); }
+  .frame canvas { display: block; max-width: 100%; max-height: 40vh; width: auto; height: auto;
+                  border-radius: 3px; background: #120c08; }
+  .status { min-height: 1.4em; text-align: center; color: var(--soft); }
+  .status.ok { color: var(--forest); }
+  .status.err { color: var(--rose); }
+  .link { align-self: center; background: rgba(20, 12, 6, .35); border: 0; color: #fff3df; font-size: 14px;
+          padding: 6px 14px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+  .hidden { display: none !important; }
+  small { color: var(--soft); font-weight: 600; }
+  /* sent: hearts float up over the world */
+  .heart { position: fixed; z-index: 3; bottom: 18vh; font-size: 26px; color: #ff6fa5; pointer-events: none;
+           text-shadow: 0 0 12px rgba(255, 111, 165, .8); animation: rise 2.6s ease-out forwards; }
+  @keyframes rise { 0% { transform: translateY(0) scale(.6); opacity: 0; }
+                    15% { opacity: 1; } 100% { transform: translateY(-55vh) scale(1.15); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { .world { transition: none; } .heart { display: none; } }
+</style>
+</head>
+<body>
+<div class="world" id="worldA"></div>
+<div class="world" id="worldB"></div>
+<div class="veil"></div>
+<main>
+  <h1 id="title">Send a photo to the lamp</h1>
+  <p class="sub" id="subtitle">It appears on the other lamp in a moment.</p>
+
+  <!-- first time on this phone: who's sending, and the passcode -->
+  <section class="card" id="setup">
+    <label>Who's sending?</label>
+    <div class="who">
+      <button type="button" data-me="A">I'm Benji</button>
+      <button type="button" data-me="B">I'm Julie</button>
+    </div>
+    <label for="pass">Passcode</label>
+    <input id="pass" type="password" autocomplete="current-password" placeholder="The photo passcode">
+    <small>Asked once; this phone remembers it.</small>
+    <button type="button" class="primary" id="save">Done</button>
+    <div class="status" id="setupStatus"></div>
+  </section>
+
+  <!-- then: pick, caption, send -->
+  <section class="card hidden" id="send">
+    <label class="pick">Choose a photo<input id="file" type="file" accept="image/*"></label>
+    <div class="frame" id="frame"><canvas id="canvas" width="480" height="320"></canvas></div>
+    <input id="caption" type="text" maxlength="80" placeholder="Add a little note (optional)">
+    <button type="button" class="primary" id="go" disabled>Send</button>
+    <div class="status" id="status"></div>
+  </section>
+
+  <button type="button" class="link hidden" id="change">Not you? Change</button>
+</main>
+
+<script>
+// Love Lamp photo page.  The photo goes to the OTHER person's lamp: shrunk to
+// fit the lamp's screen (480 x 320), a JPEG under ~60 KB, sent through the
+// lamps' broker (MQTT over secure WebSocket) to its photo topic.  The page
+// holds no password: the passcode is asked once and kept on this phone.
+const BROKER = "wss://w7f280b2.ala.us-east-1.emqxsl.com:8084/mqtt";
+const PAIR = "ll-41205afa9e";
+const USER = "lamp-photos";
+const NAMES = { A: "Benji", B: "Julie" };
+const MAX_BYTES = 60000;
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} },
+};
+let me = store.get("ll.me");
+let pass = store.get("ll.pass");
+let photo = null;   // the JPEG to send (Uint8Array)
+
+function other() { return me === "A" ? "B" : "A"; }
+
+// the world behind the page: the other lamp's (where the photo will appear);
+// before we know who's sending, the two take turns
+let drift = null;
+function setWorld(id) {
+  document.getElementById("worldA").classList.toggle("on", id === "A");
+  document.getElementById("worldB").classList.toggle("on", id === "B");
+}
+function showWorld() {
+  clearInterval(drift);
+  if (me) { setWorld(other()); return; }
+  let w = "B";
+  setWorld(w);
+  drift = setInterval(() => { w = w === "A" ? "B" : "A"; setWorld(w); }, 5000);
+}
+
+function hearts(n) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (let i = 0; i < n; i++) {
+    const h = document.createElement("div");
+    h.className = "heart";
+    h.textContent = "\u2665";
+    h.style.left = (15 + Math.random() * 70) + "vw";
+    h.style.animationDelay = (i * 0.18) + "s";
+    document.body.appendChild(h);
+    setTimeout(() => h.remove(), 3200 + i * 180);
+  }
+}
+
+function showMode() {
+  showWorld();
+  const ready = me && pass;
+  $("setup").classList.toggle("hidden", !!ready);
+  $("send").classList.toggle("hidden", !ready);
+  $("change").classList.toggle("hidden", !ready);
+  if (ready) {
+    $("title").textContent = `Send ${NAMES[other()]} a photo`;
+    $("subtitle").textContent = `It pops up on ${NAMES[other()]}'s lamp in a moment.`;
+    $("go").textContent = `Send to ${NAMES[other()]}'s lamp`;
+  } else {
+    $("title").textContent = "Send a photo to the lamp";
+    $("subtitle").textContent = "First, who's this?";
+  }
+  document.querySelectorAll("[data-me]").forEach((b) => b.classList.toggle("on", b.dataset.me === me));
+}
+
+document.querySelectorAll("[data-me]").forEach((b) =>
+  b.addEventListener("click", () => { me = b.dataset.me; showMode(); }));
+
+$("save").addEventListener("click", () => {
+  const p = $("pass").value.trim();
+  if (!me) { setStatus("setupStatus", "Tap who you are first.", "err"); return; }
+  if (!p) { setStatus("setupStatus", "Type the passcode.", "err"); return; }
+  pass = p;
+  store.set("ll.me", me);
+  store.set("ll.pass", pass);
+  $("pass").value = "";
+  showMode();
+});
+
+$("change").addEventListener("click", () => {
+  store.del("ll.me"); store.del("ll.pass");
+  me = null; pass = null; showMode();
+});
+
+function setStatus(id, text, kind) {
+  const el = $(id);
+  el.textContent = text;
+  el.className = "status" + (kind ? " " + kind : "");
+}
+
+// The photo, the right way up, fitted inside 480 x 320 (nothing cropped).
+$("file").addEventListener("change", async () => {
+  const f = $("file").files[0];
+  if (!f) return;
+  setStatus("status", "Getting it ready...");
+  try {
+    let src;
+    try { src = await createImageBitmap(f, { imageOrientation: "from-image" }); }
+    catch (e) {   // (older phones)
+      src = await new Promise((ok, bad) => {
+        const im = new Image();
+        im.onload = () => ok(im);
+        im.onerror = bad;
+        im.src = URL.createObjectURL(f);
+      });
+    }
+    const w0 = src.width, h0 = src.height;
+    const k = Math.min(480 / w0, 320 / h0, 1);
+    const w = Math.max(1, Math.round(w0 * k)), h = Math.max(1, Math.round(h0 * k));
+    const c = $("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    g.imageSmoothingQuality = "high";
+    g.drawImage(src, 0, 0, w, h);
+    let q = 0.82, blob;
+    do {
+      blob = await new Promise((ok) => c.toBlob(ok, "image/jpeg", q));
+      q -= 0.08;
+    } while (blob.size > MAX_BYTES && q > 0.3);
+    photo = new Uint8Array(await blob.arrayBuffer());
+    $("frame").style.display = "block";
+    $("go").disabled = false;
+    setStatus("status", "");
+  } catch (e) {
+    setStatus("status", "That photo couldn't be opened. Try another?", "err");
+  }
+});
+
+function b64(bytes) {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(s);
+}
+
+function hexId() {
+  const a = new Uint8Array(4);
+  crypto.getRandomValues(a);
+  return Array.from(a, (x) => x.toString(16).padStart(2, "0")).join("");
+}
+
+$("go").addEventListener("click", () => {
+  if (!photo) return;
+  $("go").disabled = true;
+  setStatus("status", "Sending...");
+  const msg = JSON.stringify({
+    v: 1, id: hexId(), t: "photo", from: me, ts: Math.floor(Date.now() / 1000),
+    cap: $("caption").value.trim().slice(0, 80), jpg: b64(photo),
+  });
+  const client = mqtt.connect(BROKER, {
+    username: USER, password: pass, clientId: "lamp-photos-" + hexId(),
+    clean: true, connectTimeout: 15000, reconnectPeriod: 0,
+  });
+  let done = false;
+  const finish = (text, kind) => {
+    if (done) return;
+    done = true;
+    setStatus("status", text, kind);
+    $("go").disabled = false;
+    client.end(true);
+  };
+  client.on("connect", () => {
+    client.publish(`ll/${PAIR}/${other()}/photo`, msg, { qos: 1 }, (err) => {
+      if (err) finish("It didn't go through. Try again?", "err");
+      else {
+        finish(`Sent! It's on ${NAMES[other()]}'s lamp now.`, "ok");
+        hearts(9);
+        $("caption").value = "";
+      }
+    });
+  });
+  client.on("error", (e) => {
+    const bad = /auth|not authorized|bad user/i.test(String(e && e.message));
+    finish(bad ? "The passcode didn't work. Tap \"Not you? Change\" to enter it again." :
+                 "Couldn't reach the lamps. Check the internet and try again.", "err");
+  });
+  setTimeout(() => finish("Couldn't reach the lamps. Check the internet and try again.", "err"), 25000);
+});
+
+showMode();
+</script>
+</body>
+</html>
